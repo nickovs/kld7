@@ -14,10 +14,6 @@ The KLD7 class
 Constants
 ---------
 
-.. autoclass:: kld7.Response
-   :members:
-   :member-order: bysource
-
 .. autoclass:: kld7.FrameCode
    :members:
    :member-order: bysource
