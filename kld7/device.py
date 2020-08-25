@@ -2,7 +2,7 @@
 
 import time
 import struct
-from collections import namedtuple
+from typing import NamedTuple
 
 import serial
 
@@ -13,10 +13,25 @@ from .constants import (
     Response, FrameCode
 )
 
-Target = namedtuple("Target",
-                    ['distance', 'speed', 'angle', 'magnitude'])
-Detection = namedtuple("Detection",
-                       ['detection', 'micro_detection', 'angle', 'direction', 'range', 'speed'])
+class Target(NamedTuple):
+    """Information about a tracked target"""
+    distance: float #: Distance to the target in meters
+    speed: float #: Speed of target in km/h (positive=receding, negative=approaching)
+    angle: float #: Direction of target in degrees
+    magnitude: float #: Relative magnitude of target
+
+class Detection(NamedTuple):
+    """Object detection status flags
+
+    The flags in this structure indicate if a target is detected and if
+    its attributes are above or below various configurable thresholds"
+    """
+    detection: int #: Detection flag. 0 = No detection, 1 = Detection
+    micro_detection: int #: Micro detection flag. 0 = No detection, 1 = Detection
+    angle: int #: Angle flag. 0 = Left, 1 = Right
+    direction: int #: Direction flag. 0 = Approaching, 1 = Receding
+    range: int #: Range flag. 0=Far, 1=Near
+    speed: int #: Speed flag. 0 = Low speed, 1 = High speed
 
 def _count_bits(value):
     count = 0
@@ -57,7 +72,7 @@ class _RadarParamDescriptor:
     def __init__(self, index, description):
         self._cmd = ""
         self._index = index
-        self.__doc__ = description + " (property)"
+        self.__doc__ = "(property) " + description
 
     def __set_name__(self, owner, name):
         self._cmd = name
@@ -73,7 +88,10 @@ class RadarParamProxy:
     """Proxy class for accessing radar sensor parameters
 
     This class should not be instantiated directly. An instance is returned
-    as the :any:`params` attribute of a :any:`KLD7` object"""
+    as the :any:`params` attribute of a :any:`KLD7` object. Details the values
+    in each attribute can be found in the Commands section of the `datasheet
+    <https://www.rfbeam.ch/files/products/40/downloads/Datasheet_K-LD7.pdf>`_
+    """
 
     # pylint: disable=too-few-public-methods
 
@@ -84,28 +102,50 @@ class RadarParamProxy:
         return "<Parameter proxy for {}>".format(self._parent)
 
     # Radar parameters
-    RBFR = _RadarParamDescriptor(1, "Base frequency")
-    RSPI = _RadarParamDescriptor(2, "Maximum speed")
-    RRAI = _RadarParamDescriptor(3, "Maximum range")
-    THOF = _RadarParamDescriptor(4, "Threshold offset")
-    TRFT = _RadarParamDescriptor(5, "Tracking filter type")
-    VISU = _RadarParamDescriptor(6, "Vibration suppression")
-    MIRA = _RadarParamDescriptor(7, "Min detection distance")
-    MARA = _RadarParamDescriptor(8, "Max detection distance")
-    MIAN = _RadarParamDescriptor(9, "Min detection angle")
-    MAAN = _RadarParamDescriptor(10, "Max detection angle")
-    MISP = _RadarParamDescriptor(11, "Min detection speed")
-    MASP = _RadarParamDescriptor(12, "Max detection speed")
-    DEDI = _RadarParamDescriptor(13, "Detection direction")
-    RATH = _RadarParamDescriptor(14, "Range threshold")
-    ANTH = _RadarParamDescriptor(15, "Angle threshold")
-    SPTH = _RadarParamDescriptor(16, "Speed threshold")
-    DIG1 = _RadarParamDescriptor(17, "Digital output 1")
-    DIG2 = _RadarParamDescriptor(18, "Digital output 2")
-    DIG3 = _RadarParamDescriptor(19, "Digital output 3")
-    HOLD = _RadarParamDescriptor(20, "Hold time")
-    MIDE = _RadarParamDescriptor(21, "Micro detection retriger")
-    MIDS = _RadarParamDescriptor(22, "Micro detection sensitivity")
+    RBFR = _RadarParamDescriptor(
+        1, "Base frequency. 0=Low, 1=Middle, 2=High")
+    RSPI = _RadarParamDescriptor(
+        2, "Maximum speed. 0=12.5km/h, 1=25km/h, 2=50km/h, 3=100km/h")
+    RRAI = _RadarParamDescriptor(
+        3, "Maximum range. 0=5m, 1=10m, 2=30m, 3=100m")
+    THOF = _RadarParamDescriptor(
+        4, "Threshold offset. 10-60db")
+    TRFT = _RadarParamDescriptor(
+        5, "Tracking filter type. 0 = Standard, 1 = Fast detection, 2 = Long visibility")
+    VISU = _RadarParamDescriptor(
+        6, "Vibration suppression. 0-16, 0=no suppression, 16=high suppression")
+    MIRA = _RadarParamDescriptor(
+        7, "Min detection distance. 0–100% of range setting")
+    MARA = _RadarParamDescriptor(
+        8, "Max detection distance. 0–100% of range setting")
+    MIAN = _RadarParamDescriptor(
+        9, "Min detection angle. -90° to +90°")
+    MAAN = _RadarParamDescriptor(
+        10, "Max detection angle. -90° to +90°")
+    MISP = _RadarParamDescriptor(
+        11, "Min detection speed. 0–100% of speed setting")
+    MASP = _RadarParamDescriptor(
+        12, "Max detection speed. 0–100% of speed setting")
+    DEDI = _RadarParamDescriptor(
+        13, "Detection direction. 0 = Approaching, 1 = Receding, 2 = Both")
+    RATH = _RadarParamDescriptor(
+        14, "Range threshold. 0–100% of range setting")
+    ANTH = _RadarParamDescriptor(
+        15, "Angle threshold. -90° to +90°")
+    SPTH = _RadarParamDescriptor(
+        16, "Speed threshold. 0–100% of speed setting")
+    DIG1 = _RadarParamDescriptor(
+        17, "Digital output 1. 0 = Direction, 1 = Angle, 2 = Range, 3 = Speed, 4 = Micro detection")
+    DIG2 = _RadarParamDescriptor(
+        18, "Digital output 2. 0 = Direction, 1 = Angle, 2 = Range, 3 = Speed, 4 = Micro detection")
+    DIG3 = _RadarParamDescriptor(
+        19, "Digital output 3. 0 = Direction, 1 = Angle, 2 = Range, 3 = Speed, 4 = Micro detection")
+    HOLD = _RadarParamDescriptor(
+        20, "Hold time. 1-7200 seconds")
+    MIDE = _RadarParamDescriptor(
+        21, "Micro detection retriger. 0 = Off, 1 = Retrigger")
+    MIDS = _RadarParamDescriptor(
+        22, "Micro detection sensitivity. 0-9. 0=Min. sensitivity, 9=Max. sensitivity.")
 
 class KLD7:
     """High-level driver for the K-LD7 radar unit"""
@@ -316,27 +356,27 @@ class KLD7:
         yield from self._read_single_stream(FrameCode.RFFT, max_count, min_frame_interval)
 
     def read_PDAT(self):
-        """Fetch a single set of detected targets"""
+        """Fetch a single list of possible targets as :any:`Target` objects"""
         return self._read_single_frame(FrameCode.PDAT)
 
     def stream_PDAT(self, max_count=-1, min_frame_interval=0):
-        """Yield a stream of detected targets"""
+        """Yield a stream of lists of possible targets  as :any:`Target` objects"""
         yield from self._read_single_stream(FrameCode.PDAT, max_count, min_frame_interval)
 
     def read_TDAT(self):
-        """Fetch tracked target data"""
+        """Fetch tracked target data as a :any:`Target` object"""
         return self._read_single_frame(FrameCode.TDAT)
 
     def stream_TDAT(self, max_count=-1, min_frame_interval=0):
-        """Yield a stream of tracked target data"""
+        """Yield a stream of tracked target data frames as :any:`Target` objects"""
         yield from self._read_single_stream(FrameCode.TDAT, max_count, min_frame_interval)
 
     def read_DDAT(self):
-        """Fetch detection data info"""
+        """Fetch detection flags as a :any:`Detection` object"""
         return self._read_single_frame(FrameCode.DDAT)
 
     def stream_DDAT(self, max_count=-1, min_frame_interval=0):
-        """Yield a stream of detection data info"""
+        """Yield a stream of detection flags as :any:`Detection` objects"""
         yield from self._read_single_stream(FrameCode.DDAT, max_count, min_frame_interval)
 
     @property
