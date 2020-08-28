@@ -12,10 +12,15 @@ promenant moving object in range is as simple as:
 .. code-block:: python
 
     from kld7 import KLD7
-    with KLD7("/dev/tty.usbserial') as radar:
+    with KLD7("/dev/tty.usbserial") as radar:
         for target_info in radar.stream_TDAT():
             print(target_info)
 
+Documentation
+-------------
+
+The API for this module is documented on ReadTheDocs_.
+            
 Overview
 --------
 
@@ -58,3 +63,4 @@ attribute of the driver object.
 
 .. _datasheet: https://www.rfbeam.ch/files/products/40/downloads/Datasheet_K-LD7.pdf
 
+.. _ReadTheDocs: https://kld7.readthedocs.io/en/latest/
