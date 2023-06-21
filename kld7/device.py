@@ -4,7 +4,7 @@ import time
 import struct
 from typing import NamedTuple
 
-import serial
+from serial import Serial, SerialException, PARITY_EVEN
 
 from .constants import (
     DEFAULT_BAUD_RATE, SUPPORTED_RATES,
@@ -13,12 +13,22 @@ from .constants import (
     Response, FrameCode
 )
 
+
+class KLD7Exception(Exception):
+    """General problem interacting with K-LD9 module"""
+
+
+class KLD7PacketError(KLD7Exception):
+    """Problem reading packet from module"""
+
+
 class Target(NamedTuple):
     """Information about a tracked target"""
-    distance: float #: Distance to the target in meters
-    speed: float #: Speed of target in km/h (positive=receding, negative=approaching)
-    angle: float #: Direction of target in degrees
-    magnitude: float #: Relative magnitude of target
+    distance: float  #: Distance to the target in meters
+    speed: float  #: Speed of target in km/h (positive=receding, negative=approaching)
+    angle: float  #: Direction of target in degrees
+    magnitude: float  #: Relative magnitude of target
+
 
 class Detection(NamedTuple):
     """Object detection status flags
@@ -26,12 +36,13 @@ class Detection(NamedTuple):
     The flags in this structure indicate if a target is detected and if
     its attributes are above or below various configurable thresholds"
     """
-    detection: int #: Detection flag. 0 = No detection, 1 = Detection
-    micro_detection: int #: Micro detection flag. 0 = No detection, 1 = Detection
-    angle: int #: Angle flag. 0 = Left, 1 = Right
-    direction: int #: Direction flag. 0 = Approaching, 1 = Receding
-    range: int #: Range flag. 0=Far, 1=Near
-    speed: int #: Speed flag. 0 = Low speed, 1 = High speed
+    detection: int  #: Detection flag. 0 = No detection, 1 = Detection
+    micro_detection: int  #: Micro detection flag. 0 = No detection, 1 = Detection
+    angle: int  #: Angle flag. 0 = Left, 1 = Right
+    direction: int  #: Direction flag. 0 = Approaching, 1 = Receding
+    range: int  #: Range flag. 0=Far, 1=Near
+    speed: int  #: Speed flag. 0 = Low speed, 1 = High speed
+
 
 def _count_bits(value):
     count = 0
@@ -40,8 +51,10 @@ def _count_bits(value):
         value >>= 1
     return count
 
+
 def _make_target(fields):
-    return Target(fields[0]/100, fields[1]/100, fields[2]/100, fields[3])
+    return Target(fields[0] / 100, fields[1] / 100, fields[2] / 100, fields[3])
+
 
 def _decode_frame(code, payload):
     if code == 'RDAC':
@@ -63,12 +76,15 @@ def _decode_frame(code, payload):
     elif code == 'DDAT':
         payload = Detection(*struct.unpack(_DDAT_FORMAT, payload))
 
-    return (code, payload)
+    return code, payload
+
 
 _param_struct_fields = {}
 
+
 class _RadarParamDescriptor:
     """Radar parameter structure, represented as a mapping"""
+
     def __init__(self, index, description):
         self._cmd = ""
         self._index = index
@@ -79,10 +95,11 @@ class _RadarParamDescriptor:
         _param_struct_fields[self._index] = name
 
     def __set__(self, obj, value):
-        obj._parent._set_param(self._cmd, value)
+        obj.parent.set_param(self._cmd, value)
 
     def __get__(self, obj, owner):
-        return obj._parent._get_param(self._cmd)
+        return obj.parent.get_param(self._cmd)
+
 
 class RadarParamProxy:
     """Proxy class for accessing radar sensor parameters
@@ -96,10 +113,10 @@ class RadarParamProxy:
     # pylint: disable=too-few-public-methods
 
     def __init__(self, parent):
-        self._parent = parent
+        self.parent = parent
 
     def __repr__(self):
-        return "<Parameter proxy for {}>".format(self._parent)
+        return "<Parameter proxy for {}>".format(self.parent)
 
     # Radar parameters
     RBFR = _RadarParamDescriptor(
@@ -143,26 +160,28 @@ class RadarParamProxy:
     HOLD = _RadarParamDescriptor(
         20, "Hold time. 1-7200 seconds")
     MIDE = _RadarParamDescriptor(
-        21, "Micro detection retriger. 0 = Off, 1 = Retrigger")
+        21, "Micro detection re-trigger. 0 = Off, 1 = Re-trigger")
     MIDS = _RadarParamDescriptor(
         22, "Micro detection sensitivity. 0-9. 0=Min. sensitivity, 9=Max. sensitivity.")
 
+
 class KLD7:
     """High-level driver for the K-LD7 radar unit"""
+
     # pylint: disable=invalid-name
     def __init__(self, port, baudrate=DEFAULT_BAUD_RATE):
-        # Aleays start with thhe baud rate set to 115200
-        self._port = serial.Serial(port=port,
-                                   baudrate=DEFAULT_BAUD_RATE,
-                                   parity=serial.PARITY_EVEN,
-                                   stopbits=1)
+        # Always start with the baud rate set to 115200
+        self._port = Serial(port=port,
+                            baudrate=DEFAULT_BAUD_RATE,
+                            parity=PARITY_EVEN,
+                            stopbits=1)
         self._port.timeout = 0.2
 
         if baudrate not in SUPPORTED_RATES:
-            raise Exception("Unsupported baud rate")
+            raise KLD7Exception("Unsupported baud rate")
         response = self._send_command('INIT', SUPPORTED_RATES.index(baudrate))
         if response != Response.OK:
-            raise Exception("Failed to initialise device")
+            raise KLD7Exception("Failed to initialise device")
 
         if baudrate != DEFAULT_BAUD_RATE:
             self._port.baudrate = baudrate
@@ -187,12 +206,12 @@ class KLD7:
 
         try:
             self._send_command('GBYE')
-        except:
+        except KLD7Exception:
             pass
 
         try:
             self._port.close()
-        except:
+        except SerialException:
             pass
 
         self._port = None
@@ -204,7 +223,7 @@ class KLD7:
         """Start using the sensor object in a context handler"""
         return self
 
-    def __exit__ (self, exc_type, exc_value, traceback):
+    def __exit__(self, exc_type, exc_value, traceback):
         """Finish using the sensor object in a context handler"""
         self.close()
 
@@ -227,7 +246,7 @@ class KLD7:
     def _send_command(self, cmd, data=None):
         self._drain_serial()
         if self._port is None:
-            raise Exception("serial port has been closed")
+            raise KLD7Exception("serial port has been closed")
         if data is None:
             data = b''
         if isinstance(data, int):
@@ -243,13 +262,13 @@ class KLD7:
 
     def _read_packet(self):
         if self._port is None:
-            raise Exception("serial port has been closed")
+            raise KLD7Exception("serial port has been closed")
 
         header = self._port.read(8)
         if len(header) == 0:
-            raise Exception("Timeout waiting for reply")
+            raise KLD7PacketError("Timeout waiting for reply")
         if len(header) != 8:
-            raise Exception("Wrong length reply")
+            raise KLD7PacketError("Wrong length reply")
         reply, length = struct.unpack("<4sI", header)
         reply = reply.decode("ASCII")
         if length != 0:
@@ -258,35 +277,35 @@ class KLD7:
                 print("Failed to read all of reply")
         else:
             payload = None
-        return (reply, payload)
+        return reply, payload
 
     def _get_response(self):
         reply, payload = self._read_packet()
         if reply != 'RESP':
-            raise Exception("Packet was not a response")
+            raise KLD7PacketError("Packet was not a response")
         if len(payload) != 1:
-            raise Exception("Response packet with incorrect payload length")
+            raise KLD7PacketError("Response packet with incorrect payload length")
         code = payload[0]
         return Response(code if code < Response.MAX_RESPONSE else -1)
 
-    def _get_param(self, cmd):
+    def get_param(self, cmd):
         return self._param_dict[cmd]
 
-    def _set_param(self, cmd, value):
+    def set_param(self, cmd, value):
         value = int(value)
         response = self._send_command(cmd, value)
         if response != Response.OK:
-            raise Exception("Failed to set parameter")
+            raise KLD7Exception("Failed to set parameter")
         self._param_dict[cmd] = value
 
     def _fetch_radar_params(self):
         """Read the radar parameter structure"""
         resp = self._send_command('GRPS')
         if resp != Response.OK:
-            raise Exception("GRPS command failed: {}".format(resp))
+            raise KLD7Exception("GRPS command failed: {}".format(resp))
         code, payload = self._read_packet()
         if code != 'RPST':
-            raise Exception("GRPS data has wrong packet type")
+            raise KLD7Exception("GRPS data has wrong packet type")
 
         values = struct.unpack(_RPS_FORMAT, payload)
         for index, cmd in _param_struct_fields.items():
@@ -348,7 +367,7 @@ class KLD7:
         yield from self._read_single_stream(FrameCode.RADC, max_count, min_frame_interval)
 
     def read_RFFT(self):
-        """Fetchh a single raw FFT frame"""
+        """Fetch a single raw FFT frame"""
         return self._read_single_frame(FrameCode.RFFT)
 
     def stream_RFFT(self, max_count=-1, min_frame_interval=0):

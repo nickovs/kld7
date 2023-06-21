@@ -16,7 +16,7 @@ with open("kld7/__init__.py", "r") as fh:
 
 with open("README.rst", "r") as fh:
     desc_lines = fh.readlines()
-    stops = [i for i,l in enumerate(desc_lines) if "PyPI STOP" in l]
+    stops = [i for i, l in enumerate(desc_lines) if "PyPI STOP" in l]
     if stops:
         desc_lines = desc_lines[:stops[0]]
     long_description = "".join(desc_lines)
@@ -26,7 +26,7 @@ setuptools.setup(
     version=__version__,
     author="Nicko van Someren",
     author_email="nicko@nicko.org",
-    description="K-LD7 doplar radar sensor driver",
+    description="K-LD7 Doppler radar sensor driver",
     long_description=long_description,
     long_description_content_type="text/x-rst",
     url="https://github.com/nickovs/kld7",
@@ -39,5 +39,5 @@ setuptools.setup(
     ],
     install_requires=['pyserial'],
     python_requires='>=3.6',
-    keywords=['radar', 'doplar'],
+    keywords=['radar', 'Doppler'],
 )

@@ -27,3 +27,10 @@ Constants
 .. autoclass:: kld7.FrameCode
    :members:
    :member-order: bysource
+
+Exceptions
+----------
+
+.. autoclass:: kld7.KLD7Exception
+
+.. autoclass:: kld7.KLD7PacketError
