@@ -250,7 +250,7 @@ class KLD7:
         if data is None:
             data = b''
         if isinstance(data, int):
-            data = struct.pack("<I", data)
+            data = struct.pack("<i", data)
         if isinstance(cmd, str):
             cmd = cmd.upper().encode("ASCII")
         length = len(data)

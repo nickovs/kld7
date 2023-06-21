@@ -20,7 +20,9 @@ with open("README.rst", "r") as fh:
     if stops:
         desc_lines = desc_lines[:stops[0]]
     long_description = "".join(desc_lines)
-        
+    find_any = re.compile(":any:`(\S+)`")
+    long_description = find_any.sub("``\\1``", long_description)
+
 setuptools.setup(
     name="kld7",
     version=__version__,
